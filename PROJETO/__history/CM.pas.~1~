@@ -1,0 +1,25 @@
+unit CM;
+
+interface
+
+uses
+  SysUtils, Classes, DUtilit, IB_Components, IB_Access;
+
+type
+  TDataModule1 = class(TDataModule)
+    DB_Servidor: TIB_Database;
+    DB_Local: TIB_Database;
+  private
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+var
+  DataModule1: TDataModule1;
+
+implementation
+
+{$R *.dfm}
+
+end.

@@ -1,0 +1,40 @@
+unit CM;
+
+interface
+
+uses
+  SysUtils, Classes, DUtilit, IB_Components, IB_Access;
+
+type
+  TDataModule1 = class(TDataModule)
+    DB_Servidor: TIB_Database;
+    DB_Local: TIB_Database;
+    procedure DataModuleCreate(Sender: TObject);
+  private
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+var
+  DataModule1: TDataModule1;
+
+implementation
+
+{$R *.dfm}
+
+procedure TDataModule1.DataModuleCreate(Sender: TObject);
+begin
+  // Banco do Focus
+  DB_Local.DatabaseName:= LeStringINI('Focus.ini', 'CONFIGURACOES', 'BancoDeDados', '');
+  DB_Local.Username:= 'SYSDBA';
+  DB_Local.Password:= 'masterkey';
+
+  //Banco do Flex
+  DB_Servidor.DatabaseName:= LeStringINI('Focus.ini', 'CONFIGURACOES', 'BancoDeDadosDoFlex', '');
+  DB_Servidor.Username:= 'SYSDBA';
+  DB_Servidor.Password:= 'masterkey';
+
+end;
+
+end.

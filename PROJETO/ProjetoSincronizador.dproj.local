@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<BorlandProject>
+	<Transactions>
+    <Transaction>2011/09/22 13:29:47.302.pas,D:\RAD Studio\Projects\Unit1.pas=D:\Focus\Sinc Flex\Flex PDV\Projeto\Principal.pas</Transaction>
+    <Transaction>2011/09/22 13:29:47.302.dfm,D:\RAD Studio\Projects\Unit1.dfm=D:\Focus\Sinc Flex\Flex PDV\Projeto\Principal.dfm</Transaction>
+    <Transaction>2011/09/22 13:29:57.380.dproj,D:\RAD Studio\Projects\Project1.dproj=D:\Focus\Sinc Flex\Flex PDV\Projeto\ProjetoSincronizador.dproj</Transaction>
+    <Transaction>2011/09/22 13:36:11.036.pas,D:\Focus\Sinc Flex\Flex PDV\Projeto\Unit1.pas=D:\Focus\Sinc Flex\Flex PDV\Projeto\CM.pas</Transaction>
+    <Transaction>2011/09/22 13:36:11.036.dfm,D:\Focus\Sinc Flex\Flex PDV\Projeto\Unit1.dfm=D:\Focus\Sinc Flex\Flex PDV\Projeto\CM.dfm</Transaction>
+  </Transactions>
+</BorlandProject>

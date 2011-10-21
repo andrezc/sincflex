@@ -1,0 +1,30 @@
+object DataModule1: TDataModule1
+  OldCreateOrder = False
+  OnCreate = DataModuleCreate
+  Height = 178
+  Width = 186
+  object DB_Servidor: TIB_Database
+    PasswordStorage = psNotSecure
+    SQLDialect = 3
+    Params.Strings = (
+      'PATH=C:\Arquivos de programas\FlexPDV\LOCAL.FDB'
+      'USER NAME=SYSDBA'
+      'SQL DIALECT=3')
+    Isolation = tiCommitted
+    Left = 16
+    Top = 32
+    SavedPassword = '.JuMbLe.01.432B0639073E0E4B49'
+  end
+  object DB_Local: TIB_Database
+    PasswordStorage = psNotSecure
+    SQLDialect = 3
+    Params.Strings = (
+      'PATH=C:\Arquivos de programas\Focus\FOCUS.FOC'
+      'USER NAME=SYSDBA'
+      'SQL DIALECT=3')
+    Isolation = tiCommitted
+    Left = 80
+    Top = 32
+    SavedPassword = '.JuMbLe.01.432B0639073E0E4B49'
+  end
+end

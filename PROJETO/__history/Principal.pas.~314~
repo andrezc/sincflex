@@ -1,0 +1,583 @@
+unit Principal;
+
+interface
+
+uses
+  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
+  Dialogs, Menus, ExtCtrls, JvComponentBase, JvThread, CM, IB_Access,
+  IB_Components, IBQuery, StdCtrls, Buttons, ComCtrls, DUtilit, ACBrBase,
+  ACBrETQ;
+
+type
+  TfrmPrincipal = class(TForm)
+    PopMenu: TPopupMenu;
+    SincronizarAgora1: TMenuItem;
+    TIcon: TTrayIcon;
+    ThreadCriaObjetos: TJvThread;
+    ThreadSincroniza: TJvThread;
+    Fechar1: TMenuItem;
+    btSincroniza: TBitBtn;
+    btFechar: TBitBtn;
+    ProgressBar: TProgressBar;
+    lbStatus: TLabel;
+    ACBrETQ1: TACBrETQ;
+    procedure Fechar1Click(Sender: TObject);
+    procedure ThreadCriaObjetosExecute(Sender: TObject; Params: Pointer);
+    procedure btFecharClick(Sender: TObject);
+    procedure btSincronizaClick(Sender: TObject);
+    procedure SincronizarAgora1Click(Sender: TObject);
+    procedure ThreadSincronizaExecute(Sender: TObject; Params: Pointer);
+    procedure FormShow(Sender: TObject);
+  private
+    procedure Libera;
+    function AlteraStatus(cd_venda: String): Boolean;
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+var
+  frmPrincipal: TfrmPrincipal;
+
+  // Servidor
+  Query_Serv       : TIB_Query;
+  Transaction_Serv : TIB_Transaction;
+  // Local
+    Query_Local       : TIB_Query;
+  Transaction_Local : TIB_Transaction;
+
+  Query_Serv_Itens, Query_Itens  : TIB_Query;
+
+
+
+implementation
+
+{$R *.dfm}
+
+function CompletaZeros(Texto:string; Tamanho:integer):string;
+var
+  i :integer;
+begin
+  result := texto;
+  for i := Length(Texto) to Tamanho do
+    result := result + '0';
+end;
+
+function TfrmPrincipal.AlteraStatus(cd_venda : String) : Boolean;
+var
+  QueryStatus : TIB_Query;
+  TransactionStatus : TIB_Transaction;
+begin
+  try
+    QueryStatus:= TIB_Query.Create(Self);
+    TransactionStatus:=  TIB_Transaction.Create(Self);
+    QueryStatus.IB_Connection:= DataModule1.DB_Servidor;
+    TransactionStatus.IB_Connection:= DataModule1.DB_Servidor;
+    QueryStatus.IB_Transaction:= TransactionStatus;
+
+    TransactionStatus.StartTransaction;
+    QueryStatus.Close;
+    with QueryStatus do
+    begin
+      SQL.Clear;
+      SQL.Add('Update VENDAS_PDV set MODO_BD = ''V'' where CODIGO_VENDA = ' + cd_venda);
+      ExecSQL;
+    end;
+    TransactionStatus.Commit;
+  finally
+    QueryStatus.Free;
+    TransactionStatus.Free;
+  end;
+end;
+
+procedure TfrmPrincipal.Libera;
+begin
+  Query_Serv.Free;
+  Query_Local.Free;
+  Query_Serv_Itens.Free;
+  Query_Itens.Free;
+
+  Transaction_Serv.Free;
+  Transaction_Local.Free;
+end;
+
+function _CharToInt(ch : char) : Word;
+begin
+  if ch = UpCase('V') then
+    result:= 1
+  else
+    result:= 0;
+end;
+
+function _IntToChar(wd : word) : char;
+begin
+  if wd = -1 then
+    result:= 'V'
+  else
+    result:= 'F';
+end;
+
+procedure TfrmPrincipal.btFecharClick(Sender: TObject);
+begin
+//  frmPrincipal.Hide;
+  Application.Terminate;
+end;
+
+procedure TfrmPrincipal.btSincronizaClick(Sender: TObject);
+begin
+  ProgressBar.Position:= 0;
+  lbStatus.Caption:= 'Carregando...';
+  Self.Cursor:= crHourGlass;
+  btSincroniza.Enabled := False;
+  btFechar.Enabled:= False;
+  ThreadCriaObjetos.ExecuteAndWait(Self);
+  ThreadSincroniza.ExecuteAndWait(Self);
+  lbStatus.Caption:= '';
+  btSincroniza.Enabled:= True;
+  btFechar.Enabled:=  True;
+  Self.Cursor:= crDefault;
+  Libera;
+  //MessageBox(0, 'Os Bancos de Dados foram Sincronizados com Sucesso!', 'Sucesso!', MB_ICONWARNING or MB_OK);
+end;
+
+procedure TfrmPrincipal.Fechar1Click(Sender: TObject);
+begin
+  if (MessageBox(0, 'Você deseja fechar o Sincronizador?', 'Fechar',
+  MB_ICONQUESTION or MB_YESNO) = mrYes) then
+    Application.Terminate
+end;
+
+procedure TfrmPrincipal.FormShow(Sender: TObject);
+begin
+  with DataModule1 do
+  begin
+    // Banco do Focus
+    DB_Local.Disconnect;
+    DB_Local.DatabaseName:= LeStringINI('Focus.ini', 'CONFIGURACOES', 'BancoDeDados', '');
+    DB_Local.Username:= 'SYSDBA';
+    DB_Local.Password:= 'masterkey';
+    DB_Local.Connect;
+
+    //Banco do Flex
+    DB_Servidor.Disconnect;
+    DB_Servidor.DatabaseName:= LeStringINI('Focus.ini', 'CONFIGURACOES', 'BancoDeDadosDoFlex', '');
+    DB_Servidor.Username:= 'SYSDBA';
+    DB_Servidor.Password:= 'masterkey';
+    DB_Servidor.Connect;
+  end;
+end;
+
+procedure TfrmPrincipal.SincronizarAgora1Click(Sender: TObject);
+begin
+  frmPrincipal.Show;
+end;
+
+procedure TfrmPrincipal.ThreadCriaObjetosExecute(Sender: TObject;
+  Params: Pointer);
+begin
+  DataModule1.DB_Servidor.Connected := True;
+  DataModule1.DB_Local.Connected := True;
+
+  try
+    // Servidor:
+    Query_Serv := TIB_Query.Create(Self);
+    Transaction_Serv := TIB_Transaction.Create(Self);
+    Query_Serv.IB_Connection := DataModule1.DB_Servidor;
+    Transaction_Serv.IB_Connection := Query_Serv.IB_Connection;
+    Query_Serv.IB_Transaction := Transaction_Serv;
+
+    Query_Serv_Itens:= TIB_Query.Create(Self);
+    Query_Serv_Itens.IB_Connection := DataModule1.DB_Servidor;
+    Query_Serv_Itens.IB_Transaction := Transaction_Serv;
+    // Local
+    Query_Local := TIB_Query.Create(Self);
+    Transaction_Local := TIB_Transaction.Create(Self);
+    Query_Local.IB_Connection := DataModule1.DB_Local;
+    Transaction_Local.IB_Connection := Query_Local.IB_Connection;
+    Query_Local.IB_Transaction := Transaction_Local;
+
+    Query_Itens:= TIB_Query.Create(Self);
+    Query_Itens.IB_Connection:= DataModule1.DB_Local;
+    Query_Itens.IB_Transaction := Transaction_Local;
+  except
+  on E : Exception do
+    ShowMessage(E.Message)
+  end;
+end;
+
+procedure TfrmPrincipal.ThreadSincronizaExecute(Sender: TObject;
+  Params: Pointer);
+var
+  number : Integer;
+  Usuario, Senha : String;
+begin
+  try
+    Query_Local.Close;
+    Query_Local.SQL.Clear;
+    Query_Local.SQL.Add('Select * from PEDIDO where PED_ORC_VENDA =  ''P''');
+    if not Query_Local.Prepared then Query_Local.Prepare;
+    Query_Local.Open;
+    Query_Local.First;
+
+    if not Transaction_Serv.InTransaction then Transaction_Serv.StartTransaction;
+
+    Query_Serv.Close;
+    Query_Serv.SQL.Clear;
+    Query_Serv.SQL.Add('Delete from PEDIDOS_PDV');
+    Query_Serv.ExecSQL;
+
+
+    Query_Serv.Close;
+    Query_Serv.SQL.Clear;
+
+
+    Query_Serv.SQL.Add('Update or Insert into PEDIDOS_PDV (NOME_CLIENTE, CODIGO_CLIENTE,');
+    Query_Serv.SQL.Add('NUMERO_PEDIDO, TOTAL_PEDIDO, CODIGO_EMPRESA, DT_EMISSAO,');
+    Query_Serv.SQL.Add('COO, CCF, CODIGO_VENDEDOR) values (:NOME_CLI, :COD_CLI,');
+    Query_Serv.SQL.Add(':N_PEDIDO, :TOT_LIQ, :COD_EMPRE, :DT_EMI, :COO, :CCF, :COD_VEND)');
+
+
+    while not Query_Local.Eof do
+    begin
+      Query_Serv.Close;
+      if not Query_Serv.Prepared then Query_Serv.Prepare;
+
+      Query_Serv.ParamByName('NOME_CLI').AsString := Query_Local.FieldByName('NM_CLIENTE').AsString;
+      Query_Serv.ParamByName('COD_CLI').AsString  := Query_Local.FieldByName('CD_CLIENTE').AsString;
+      Query_Serv.ParamByName('N_PEDIDO').AsString := Query_Local.FieldByName('NUM_PEDIDO').AsString;
+      Query_Serv.ParamByName('TOT_LIQ').AsString := Query_Local.FieldByName('TOTALLIQUIDO').AsString;
+      Query_Serv.ParamByName('COD_EMPRE').AsString:= Query_Local.FieldByName('CD_EMPRESA').AsString;
+      Query_Serv.ParamByName('DT_EMI').AsDateTime:= Query_Local.FieldByName('DT_ABERTURA').AsDateTime;
+      Query_Serv.ParamByName('COO').AsString:= Query_Local.FieldByName('ECF_COO').AsString;
+      Query_Serv.ParamByName('CCF').AsString:= Query_Local.FieldByName('ECF_CCF').AsString;
+      Query_Serv.ParamByName('COD_VEND').AsString:= Query_Local.FieldByName('VENDEDOR').AsString;
+
+      Query_Serv.ExecSQL;
+      Query_Local.Next;
+    end;
+    Transaction_Serv.Commit;
+
+
+    Query_Local.Close;
+    Query_Local.SQL.Clear;
+    Query_Local.SQL.Add('Select * from CLIENTES where INATIVO = ''F''');
+    if not Query_Local.Prepared then Query_Local.Prepare;
+    Query_Local.Open;
+    Query_Local.First;
+
+    if not Transaction_Serv.InTransaction then Transaction_Serv.StartTransaction;
+
+    Query_Serv.Close;
+    Query_Serv.SQL.Clear;
+    Query_Serv.SQL.Add('Delete from CLIENTE_PDV');
+    Query_Serv.ExecSQL;
+
+    Query_Serv.Close;
+    Query_Serv.SQL.Clear;
+
+    Query_Serv.SQL.Add('Insert into CLIENTE_PDV (CODIGO, NOME, TIPO_PESSOA,');
+    Query_Serv.SQL.Add('CNPJ, CPF, ENDERECO, NUMERO, CIDADE, BAIRRO, CEP, UF,');
+    Query_Serv.SQL.Add('LIMITE_CREDITO, SALDO_DISPONIVEL, OBSERVACOES, DATA_NASCIMENTO,');
+    Query_Serv.SQL.Add('TELEFONE, DATA_CADASTRO, INSCR_ESTADUAL, STATUS) values (');
+    Query_Serv.SQL.Add(':COD, :NOME, :TP_PESSOA, :CNPJ, :CPF, :ENDERECO, :NUMERO,');
+    Query_Serv.SQL.Add(':CIDADE, :BAIRRO, :CEP, :UF, :LIMITE_CREDITO, :SALDO_DISPONIVEL,');
+    Query_Serv.SQL.Add(':OBS, :DT_NASC, :TEL, :DT_CADAS, :INSC_EST, ''Ativo'')');
+
+    ProgressBar.Position:= 0;
+    ProgressBar.Max:= Query_Local.RecordCount;
+    lbStatus.Caption:= 'Carregando... Tabela CLIENTES';
+    while not Query_Local.Eof do
+    begin
+      ProgressBar.StepIt;
+      Query_Serv.Close;
+      if not Query_Serv.Prepared then Query_Serv.Prepare;
+
+      Query_Serv.ParamByName('COD').AsString:= Query_Local.FieldByName('CD_CLIENTE').AsString;
+      Query_Serv.ParamByName('NOME').AsString:= Query_Local.FieldByName('NM_CLIENTE').AsString;
+      Query_Serv.ParamByName('TP_PESSOA').AsString:= Query_Local.FieldByName('TIPO_CLIENTE').AsString;
+      Query_Serv.ParamByName('CNPJ').AsString:= Query_Local.FieldByName('CPF').AsString;
+      Query_Serv.ParamByName('CPF').AsString:= Query_Local.FieldByName('CPF').AsString;
+      Query_Serv.ParamByName('ENDERECO').AsString:= Query_Local.FieldByName('ENDERECO').AsString;
+      Query_Serv.ParamByName('NUMERO').AsString:= Query_Local.FieldByName('ENDERECO_NUMERO').AsString;
+      Query_Serv.ParamByName('CIDADE').AsString:= Query_Local.FieldByName('CIDADE').AsString;
+      Query_Serv.ParamByName('BAIRRO').AsString:= Query_Local.FieldByName('BAIRRO').AsString;
+      Query_Serv.ParamByName('CEP').AsString:= Query_Local.FieldByName('CEP').AsString;
+      Query_Serv.ParamByName('UF').AsString:= Query_Local.FieldByName('ESTADO').AsString;
+      Query_Serv.ParamByName('LIMITE_CREDITO').AsString:= Query_Local.FieldByName('LIMITECREDITO').AsString;
+      Query_Serv.ParamByName('SALDO_DISPONIVEL').AsString:= Query_Local.FieldByName('CREDITO').AsString;
+      Query_Serv.ParamByName('OBS').AsString:= Query_Local.FieldByName('OBS').AsString;
+      Query_Serv.ParamByName('DT_NASC').AsDateTime:= Query_Local.FieldByName('DT_NASCIMENTO').AsDateTime;
+      Query_Serv.ParamByName('TEL').AsString:= Query_Local.FieldByName('TELEFONE').AsString;
+      Query_Serv.ParamByName('DT_CADAS').AsDateTime:= Query_Local.FieldByName('DT_CADASTRO').AsDateTime;
+      Query_Serv.ParamByName('INSC_EST').AsString:= Query_Local.FieldByName('RG').AsString;
+
+      Query_Serv.ExecSQL;
+      Query_Local.Next;
+    end;
+    Transaction_Serv.Commit;
+
+    Query_Local.Close;
+    Query_Local.SQL.Clear;
+    Query_Local.SQL.Add('Select P.NM_Produto|| '' '' || coalesce(G.NM_Grade, '''') as NM_Produto, P.*,');
+    Query_Local.SQL.Add('E.estoqueatual, coalesce (G.CD_Grade, 0) as CD_GRADE from PRODUTOS as P');
+    Query_Local.SQL.Add('left outer join sp_pegaestoque(p.cd_produto, 0, 0) as E on 1 = 1');
+    Query_Local.SQL.Add('left outer join grades as G on G.CD_Produto = P.CD_Produto');
+    Query_Local.SQL.Add('where INATIVO = ''F''  order by 1');
+
+    if not Query_Local.Prepared then Query_Local.Prepare;
+    Query_Local.Open;
+    Query_Local.First;
+    if not Transaction_Serv.InTransaction then Transaction_Serv.StartTransaction;
+
+    Query_Serv.Close;
+    Query_Serv.SQL.Clear;
+    Query_Serv.SQL.Add('Delete from PRODUTO_PDV');
+    Query_Serv.Open;
+    Query_Serv.ExecSQL;
+
+    Query_Serv.Close;
+    Query_Serv.SQL.Clear;
+
+    Query_Serv.SQL.Add('Insert into PRODUTO_PDV (CODIGO, CODIGO_FABRICA, DESCRICAO, ALIQUOTA,');
+    Query_Serv.SQL.Add('VALOR_VENDA, UNIDADE, COMISSIONADO,');
+    Query_Serv.SQL.Add('TIPO_ITEM, EX_IPI, SIT_TRIBUTARIA, CODIGO_FABRICA_CRIPT, ESTOQUE_ATUAL,');
+    Query_Serv.SQL.Add('FRACIONADO, CST_ICMS, CODIGO_EMPRESA, CODIGO_REFERENCIA, CODIGO_COMPOSICAO,');
+    Query_Serv.SQL.Add('COMPOSICAO) values (:COD, :CD_BARRA, :DESCRI, :ALIQ,');
+    Query_Serv.SQL.Add(':VL_VENDA, :UN, :COMISSIONADO, :TP_ITEM,');
+    Query_Serv.SQL.Add(':IPI,  :SIT_TRIBUTARIA, :CODIGO_FABRICA_CRIPT, :ESTOQUEATUAL, :FRACIONADO, ');
+    Query_Serv.SQL.Add(':CST_ICMS, :CD_EMPRESA, :CODIGO_REFERENCIA, :CODIGO_COMPOSICAO, :COMPOSICAO)');
+
+
+    ProgressBar.Position:= 0;
+    ProgressBar.Max:= Query_Local.RecordCount;
+    lbStatus.Caption:= 'Carregando... Tabela PRODUTO_PDV';
+    while not Query_Local.Eof do
+    begin
+      ProgressBar.StepIt;
+      Query_Serv.Close;
+      if not Query_Serv.Prepared then Query_Serv.Prepare;
+      Query_Serv.ParamByName('COD').AsString := Query_Local.FieldByName('CD_PRODUTO').AsString;
+      Query_Serv.ParamByName('CD_BARRA').AsString := CompletaZeros(Query_Local.FieldByName('COD_BARRAS').AsString, 14) ;
+      Query_Serv.ParamByName('DESCRI').AsString:= Query_Local.FieldByName('DESCRICAO_ABREV').AsString;
+      Query_Serv.ParamByName('ALIQ').AsString:= Query_Local.FieldByName('ALIQUOTA').AsString;
+      Query_Serv.ParamByName('VL_VENDA').AsString:= Query_Local.FieldByName('PRECOVENDA').AsString;
+      Query_Serv.ParamByName('UN').AsString:= Query_Local.FieldByName('UNIDADE').AsString;
+      Query_Serv.ParamByName('CD_EMPRESA').AsString:= Query_Local.FieldByName('CD_EMPRESA').AsString;
+      Query_Serv.ParamByName('COMISSIONADO').AsString:= '0';
+      Query_Serv.ParamByName('TP_ITEM').AsString:= Query_Local.FieldByName('TIPO_ITEM').AsString;
+      Query_Serv.ParamByName('IPI').AsString:= Query_Local.FieldByName('IPI').AsString;
+
+      if Query_Local.FieldByName('CST1').AsString = '40' then
+        Query_Serv.ParamByName('SIT_TRIBUTARIA').AsString:= 'II'
+      else if Query_Local.FieldByName('CST1').AsString = '41' then
+        Query_Serv.ParamByName('SIT_TRIBUTARIA').AsString:= 'MN'
+      else if (Query_Local.FieldByName('CST1').AsString = '10') or
+      (Query_Local.FieldByName('CST1').AsString = '30') or
+      (Query_Local.FieldByName('CST1').AsString = '60') or
+      (Query_Local.FieldByName('CST1').AsString = '70') then
+        Query_Serv.ParamByName('SIT_TRIBUTARIA').AsString:= 'MN'
+      else
+        Query_Serv.ParamByName('SIT_TRIBUTARIA').AsString:= 'II';
+
+      Query_Serv.ParamByName('CODIGO_FABRICA_CRIPT').AsString:= Query_Local.FieldByName('CD_GRADE').AsString;
+      Query_Serv.ParamByName('ESTOQUEATUAL').AsString        := IntToStr(Query_Local.FieldByName('ESTOQUEATUAL').AsInteger);
+
+      {Necessários}
+      Query_Serv.ParamByName('COMISSIONADO').AsInteger:= 0;
+      Query_Serv.ParamByName('FRACIONADO').AsString := 'S';
+      Query_Serv.ParamByName('CST_ICMS').AsString:= '0';
+      Query_Serv.ParamByName('CD_EMPRESA').AsString:= '001';
+      Query_Serv.ParamByName('CODIGO_REFERENCIA').AsString:= CompletaZeros(Query_Local.FieldByName('COD_BARRAS').AsString, 13);
+      Query_Serv.ParamByName('CODIGO_COMPOSICAO').AsString:= '00000';
+      Query_Serv.ParamByName('COMPOSICAO').AsString:= '0';
+
+
+      Query_Serv.ExecSQL;
+      Query_Local.Next;
+    end;
+    Transaction_Serv.Commit;
+
+
+    Query_Serv.Close;
+    Query_Serv.SQL.Clear;
+    Query_Serv.SQL.Add('Select * from VENDAS_PDV where coalesce (MODO_BD, '''') <> ''V''');
+    if not Query_Serv.Prepared then Query_Serv.Prepare;
+    Query_Serv.Open;
+    Query_Serv.First;
+
+    Query_Serv_Itens.Close;
+    Query_Serv_Itens.SQL.Clear;
+    Query_Serv_Itens.SQL.Add('Select * from VENDAS_ITENS_PDV where CODIGO_VENDA = :P');
+
+     if not Transaction_Local.InTransaction then Transaction_Local.StartTransaction;
+
+
+    Query_Itens.Close;
+    Query_Itens.SQL.Clear;
+    Query_Itens.sql.add('Insert into PEDIDO_ITEM');
+    Query_Itens.sql.add('( ');
+    Query_Itens.sql.add('NUM_DOCUMENTO,');
+    Query_Itens.sql.add('CD_PRODUTO,');
+    Query_Itens.sql.add('QUANTIDADE,');
+    Query_Itens.sql.add('DT_VENDA,');
+    Query_Itens.sql.add('CD_CLIENTE,');
+    Query_Itens.sql.add('VENDEDOR,');
+    Query_Itens.sql.add('PRECO,');
+    Query_Itens.sql.add('SUBTOTAL,');
+    Query_Itens.sql.add('DESCRICAO,');
+    Query_Itens.sql.add('ACRES_DESC_VALOR,');
+    Query_Itens.sql.add('ALIQUOTA, CD_GRADE)');
+
+    //Query_Itens.sql.add('CANCELADO,');
+    Query_Itens.sql.add('Values');
+    Query_Itens.sql.add('(');
+    Query_Itens.sql.add(':NUM_DOCUMENTO,');
+    Query_Itens.sql.add(':CD_PRODUTO,');
+    Query_Itens.sql.add(':QUANTIDADE,');
+    Query_Itens.sql.add(':DT_VENDA,');
+    Query_Itens.SQL.Add(':CD_CLIENTE,');
+    Query_Itens.sql.add(':VENDEDOR,');
+    Query_Itens.sql.add(':PRECO,');
+    Query_Itens.sql.add(':SUBTOTAL,');
+    Query_Itens.sql.add(':DESCRICAO,');
+    Query_Itens.sql.add(':ACRES_DESC_VALOR,');
+    Query_Itens.sql.add(':ALIQUOTA, :CD_GRADE');
+   // Query_Itens.sql.add(':CANCELADO,');
+    Query_Itens.sql.add(')');
+
+
+    ProgressBar.Position:= 0;
+    ProgressBar.Max:= Query_Serv.RecordCount;
+    lbStatus.Caption:= 'Carregando... Tabela PEDIDO';
+     while not Query_Serv.Eof do
+     begin
+      ProgressBar.StepIt;
+
+        with Query_Local do
+        begin
+          Close;
+          SQL.Clear;
+          SQL.Add('Select gen_id(gen_num_documento, 1) as gen from  rdb$database');
+          Open;
+          number:= FieldByName('gen').AsInteger;
+        end;
+
+        Query_Local.Close;
+        Query_Local.SQL.Clear;
+
+        Query_Local.SQL.Add('Insert into PEDIDO (NUM_DOCUMENTO, CD_VENDA, CD_EMPRESA, ECF_CCF,');
+        Query_Local.SQL.Add('CD_CLIENTE, ECF_COO, ECF_CRO, ECF_CRZ, CANCELADO,');
+        Query_Local.SQL.Add('VENDEDOR, ECF_MODELO, NM_CLIENTE, NUM_PEDIDO, TOTALLIQUIDO,');
+        Query_Local.SQL.Add('VALORCUSTO, PED_ORC_VENDA) values (:gen, :CD_VENDA, :CD_EMPRESA, :CCF, :CD_CLIENTE,');
+        Query_Local.SQL.Add(':COO, :CRO, :CRZ, :CANCEL, :VENDEDOR, :ECF_MODEL,');
+        Query_Local.SQL.Add(':NM_CLIENTE, :NUM_PED, :TOTLIQ, :VALCUSTO, :PED_ORC_VENDA)');
+
+
+       Query_Local.Close;
+       if not Query_Local.Prepared then Query_Local.Prepare;
+
+       Query_Local.ParamByName('gen').AsInteger:= number;
+       Query_Local.ParamByName('CD_VENDA').AsString:= Query_Serv.FieldByName('CODIGO_VENDA').AsString;
+       Query_Local.ParamByName('CD_EMPRESA').AsString:= Query_Serv.FieldByName('CODIGO_EMPRESA').AsString;
+       Query_Local.ParamByName('CCF').AsString:= Query_Serv.FieldByName('CCF').AsString;
+       Query_Local.ParamByName('CD_CLIENTE').AsString:= Query_Serv.FieldByName('CODIGO_CLIENTE').AsString;
+       Query_Local.ParamByName('COO').AsString:= Query_Serv.FieldByName('COO').AsString;
+       Query_Local.ParamByName('CRO').AsString:= Query_Serv.FieldByName('CRO').AsString;
+       Query_Local.ParamByName('CRZ').AsString:= Query_Serv.FieldByName('CRZ').AsString;
+       Query_Local.ParamByName('CANCEL').AsString:= _IntToChar(Query_Serv.FieldByName('CUPOM_CANCELADO').AsInteger);
+       Query_Local.ParamByName('VENDEDOR').AsString:= Query_Serv.FieldByName('CODIGO_VENDEDOR').AsString;
+       Query_Local.ParamByName('ECF_MODEL').AsString:= Query_Serv.FieldByName('MODELO_ECF').AsString;
+       Query_Local.ParamByName('NM_CLIENTE').AsString:= Query_Serv.FieldByName('NOME_CLIENTE').AsString;
+       Query_Local.ParamByName('NUM_PED').AsString:= Query_Serv.FieldByName('NUMERO_CUPOM').AsString;
+       Query_Local.ParamByName('TOTLIQ').AsString:= Query_Serv.FieldByName('TOTAL_VENDA').AsString;
+       Query_Local.ParamByName('VALCUSTO').AsString:= Query_Serv.FieldByName('VALOR_VENDA').AsString;
+       Query_Local.ParamByName('PED_ORC_VENDA').AsString:= 'V';
+       //Query_Local.ParamByName('CD_GRADE').AsString:= Query_Serv.FieldByName('CODIGO_FABRICA_CRIPT').AsString;
+
+       Query_Local.ExecSQL;
+
+       Query_Serv_Itens.Close;
+
+       if not Query_Serv_Itens.Prepared then  Query_Serv_Itens.Prepare;
+       Query_Serv_Itens.ParamByName('p').AsString:= Query_Serv.FieldByName('CODIGO_VENDA').AsString;
+
+       Query_Serv_Itens.Open;
+       while not Query_Serv_Itens.Eof do
+       begin
+        Query_Itens.ParamByName('NUM_DOCUMENTO').Value := number;
+        Query_Itens.ParamByName('CD_PRODUTO').Value := Query_Serv_Itens.FieldByName('CODIGO_PRODUTO').Value;
+        Query_Itens.ParamByName('QUANTIDADE').Value := Query_Serv_Itens.FieldByName('QTD_VENDIDA').Value;
+        Query_Itens.ParamByName('DT_VENDA').Value :=   Query_Serv_Itens.FieldByName('DATA').Value;
+        Query_Itens.ParamByName('CD_CLIENTE').Value := Query_Serv_Itens.FieldByName('CODIGO_CLIENTE_COMPOSTO').Value;
+        Query_Itens.ParamByName('VENDEDOR').Value := Query_Serv_Itens.FieldByName('CODIGO_VENDEDOR').Value;
+        Query_Itens.ParamByName('PRECO').Value :=    Query_Serv_Itens.FieldByName('VALOR_VENDA').Value;
+        Query_Itens.ParamByName('SUBTOTAL').Value := Query_Serv_Itens.FieldByName('TOTAL_ITEM').Value;
+        Query_Itens.ParamByName('DESCRICAO').Value :=Query_Serv_Itens.FieldByName('DESCR_PRODUTO').Value;
+        Query_Itens.ParamByName('ACRES_DESC_VALOR').Value :=  Query_Serv_Itens.FieldByName('DESCONTO_VALOR').Value * -1;
+        Query_Itens.ParamByName('ALIQUOTA').Value :=  Query_Serv_Itens.FieldByName('ICMS').Value;
+        Query_Itens.ParamByName('CD_GRADE').Value :=  Query_Serv_Itens.FieldByName('CODIGO_FABRICA_CRIPT').AsString;
+
+
+        Query_Itens.ExecSQL;
+        AlteraStatus(Query_Serv.FieldByName('CODIGO_VENDA').AsString);
+
+        Query_Serv_Itens.Next;
+       end;
+
+
+       Query_Serv.Next;
+     end;
+     Transaction_Local.Commit;
+
+     Query_Local.Close;
+     Query_Local.SQL.Clear;
+     Query_Local.SQL.Add('Select * FROM USUARIOS');
+
+    if not Query_Local.Prepared then Query_Local.Prepare;
+    Query_Local.Open;
+    Query_Local.First;
+    if not Transaction_Serv.InTransaction then Transaction_Serv.StartTransaction;
+
+    Query_Serv.Close;
+    Query_Serv.SQL.Clear;
+    Query_Serv.SQL.Add('Delete from USUARIO');
+    Query_Serv.Open;
+    Query_Serv.ExecSQL;
+
+    Query_Serv.Close;
+    Query_Serv.SQL.Clear;
+    Query_Serv.SQL.Add('INSERT INTO USUARIO (NOME, SENHA, GRUPO_PDV)');
+    Query_Serv.SQL.Add('VALUES (:USUARIO, :SENHA, :GRUPO)');
+    if not Query_Serv.Prepared then Query_Serv.Prepare;
+
+    ProgressBar.Position:= 0;
+    ProgressBar.Max:= Query_Local.RecordCount;
+    lbStatus.Caption:= 'Carregando... Tabela USUARIOS';
+    while not Query_Local.Eof do
+    begin
+      ProgressBar.StepIt;
+      Query_Serv.Close;
+      if not Query_Serv.Prepared then Query_Serv.Prepare;
+
+      Usuario:= TiraAteOPrimeiro(Decripto2(Query_Local.FieldByName('LOGIN_PASSWORD').AsString), '¤');
+      Senha:= TiraAPartirDoPrimeiro(Decripto2(Query_Local.FieldByName('LOGIN_PASSWORD').AsString), '¤');
+
+      Query_Serv.ParamByName('USUARIO').AsString := Usuario;
+      Query_Serv.ParamByName('SENHA').AsString   := Senha;
+      Query_Serv.ParamByName('GRUPO').AsString   := 'ADMINISTRAÇÃO';
+
+      Query_Serv.ExecSQL;
+      Query_Local.Next;
+    end;
+    Transaction_Serv.Commit;
+
+    MessageBox(0, 'Sincronização Concluída!', 'Sucesso!', MB_ICONINFORMATION or MB_OK);
+  except
+  on e : Exception do
+    ShowMessage(e.Message);
+  //  MessageBox(0, 'Ocorreu algum erro ao fazer a Sincronização.',
+  //    'Erro ao Sincronizar!', MB_ICONERROR or MB_OK);
+  end;
+  ProgressBar.Position:=0;
+end;
+end.

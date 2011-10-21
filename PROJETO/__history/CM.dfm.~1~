@@ -1,0 +1,17 @@
+object DataModule1: TDataModule1
+  OldCreateOrder = False
+  Height = 226
+  Width = 271
+  object DB_Servidor: TIB_Database
+    SQLDialect = 3
+    Isolation = tiCommitted
+    Left = 24
+    Top = 176
+  end
+  object DB_Local: TIB_Database
+    SQLDialect = 3
+    Isolation = tiCommitted
+    Left = 72
+    Top = 176
+  end
+end

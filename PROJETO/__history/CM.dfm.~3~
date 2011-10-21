@@ -1,0 +1,31 @@
+object DataModule1: TDataModule1
+  OldCreateOrder = False
+  Height = 178
+  Width = 186
+  object DB_Servidor: TIB_Database
+    PasswordStorage = psNotSecure
+    SQLDialect = 3
+    Params.Strings = (
+      'PATH=D:\Focus\Sinc Flex\Flex PDV\BD_Exemplo_Firebird\REDE.FDB'
+      'USER NAME=SYSDBA'
+      'SQL DIALECT=3')
+    Isolation = tiCommitted
+    Left = 16
+    Top = 32
+    SavedPassword = '.JuMbLe.01.432B0639073E0E4B49'
+  end
+  object DB_Local: TIB_Database
+    PasswordStorage = psNotSecure
+    SQLDialect = 3
+    Params.Strings = (
+      
+        'PATH=D:\Focus\Sinc Flex\Flex PDV\BANCO_NUNES\BASE VAZIA 2010.12.' +
+        '03.FOC'
+      'USER NAME=SYSDBA'
+      'SQL DIALECT=3')
+    Isolation = tiCommitted
+    Left = 80
+    Top = 32
+    SavedPassword = '.JuMbLe.01.432B0639073E0E4B49'
+  end
+end
